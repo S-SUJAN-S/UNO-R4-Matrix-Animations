@@ -1,10 +1,8 @@
 /*
-  UNO R4 Guide: Programmatic Rain Animation
+  UNO R4 Guide: Programmatic Pulsing Square Animation
 
-  Purpose: Creates a continuous, non-repeating "falling rain" animation
-  by programmatically calculating the position of each raindrop for every frame.
-  This version uses a non-blocking timer for a smooth, continuous loop and
-  ensures raindrops are not generated in adjacent columns for a clearer look.
+  Purpose: Demonstrates how to create a dynamic "pulsing" animation by
+  programmatically modifying a 2D bitmap frame buffer in real-time.
 */
 
 // Include the necessary library for LED matrix control.
@@ -13,71 +11,61 @@
 // Create an instance of the ArduinoLEDMatrix class.
 ArduinoLEDMatrix matrix;
 
-// --- Animation Parameters ---
-const int FRAME_DELAY = 100; // Milliseconds between animation frames (lower is faster)
-
 // --- Global Frame Buffer ---
-// This array holds the current state of all 96 LEDs.
-// We will modify this array directly to create the animation.
+// Declare the 8x12 frame buffer as a global variable. This allows it to
+// persist and be modified across multiple iterations of the loop() function.
 uint8_t frame[8][12];
 
-// Variables for the non-blocking timer
-unsigned long previousMillis = 0;
+// --- Animation Parameters ---
+int squareSize = 0;      // Current size of the square
+bool growing = true;     // Direction of animation (growing or shrinking)
+int animationSpeed = 75; // Delay in milliseconds between frames
 
 void setup() {
   // Initialize the LED matrix.
   matrix.begin();
-  // Ensure the random number generator is seeded differently each time
-  randomSeed(analogRead(A0));
 }
 
 void loop() {
-  // Get the current time
-  unsigned long currentMillis = millis();
-
-  // Check if enough time has passed to calculate and show the next frame
-  if (currentMillis - previousMillis >= FRAME_DELAY) {
-    // Save the time of this frame change
-    previousMillis = currentMillis;
-
-    // --- Animation Logic ---
-
-    // 1. Shift all existing raindrops down by one row.
-    // We loop from the bottom row up to avoid overwriting pixels prematurely.
-    for (int r = 7; r > 0; r--) {
-      for (int c = 0; c < 12; c++) {
-        frame[r][c] = frame[r - 1][c];
-      }
+  // --- Animation Logic ---
+  // Update the size of the square for the next frame.
+  if (growing) {
+    squareSize++;
+    if (squareSize >= 4) { // Max size is a 4x4 inner square
+      growing = false;
     }
-
-    // 2. Clear the top row to make space for new raindrops.
-    for (int c = 0; c < 12; c++) {
-      frame[0][c] = 0;
+  } else {
+    squareSize--;
+    if (squareSize <= 0) { // Min size is 0
+      growing = true;
     }
-
-    // 3. Randomly generate new raindrops on the top row.
-    for (int c = 0; c < 12; c++) {
-      // Use a random check to decide if a new drop should appear.
-      if (random(5) == 0) {
-        // --- IMPROVEMENT: Check the surrounding 8 pixels (5 relevant ones) ---
-        bool isSpaceClear = true;
-        // Check left
-        if (c > 0 && frame[0][c - 1] == 1) isSpaceClear = false;
-        // Check right
-        if (c < 11 && frame[0][c + 1] == 1) isSpaceClear = false;
-        // Check 3 pixels below
-        if (frame[1][c] == 1) isSpaceClear = false;
-        if (c > 0 && frame[1][c - 1] == 1) isSpaceClear = false;
-        if (c < 11 && frame[1][c + 1] == 1) isSpaceClear = false;
-
-        if (isSpaceClear) {
-          frame[0][c] = 1; // A new drop appears
-        }
-      }
-    }
-
-    // --- Render the Frame ---
-    // Display the newly calculated frame on the LED matrix.
-    matrix.renderBitmap(frame, 8, 12);
   }
+
+  // --- Drawing Logic ---
+  // 1. Clear the entire frame buffer by setting all pixels to 0 (OFF).
+  for (int r = 0; r < 8; r++) {
+    for (int c = 0; c < 12; c++) {
+      frame[r][c] = 0;
+    }
+  }
+
+  // 2. Draw the new square based on the current 'squareSize'.
+  // The square is centered on the matrix.
+  // The offsets calculate the boundaries for the current size.
+  for (int r = 4 - squareSize; r <= 3 + squareSize; r++) {
+    for (int c = 6 - squareSize; c <= 5 + squareSize; c++) {
+      // Bounds check to ensure we don't write outside the array
+      if (r >= 0 && r < 8 && c >= 0 && c < 12) {
+        frame[r][c] = 1; // Set pixel to ON
+      }
+    }
+  }
+
+  // --- Render the Frame ---
+  // Display the newly drawn frame on the LED matrix.
+  matrix.renderBitmap(frame, 8, 12);
+
+  // --- Animation Timing ---
+  // Wait for a short period to control the speed of the animation.
+  delay(animationSpeed);
 }
